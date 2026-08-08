@@ -73,7 +73,10 @@ in their actual environment. Don't make them read the doc.
    field.)
 7. **Verify** with a signed empty commit in a scratch repo and
    `git log --show-signature -1`. Expect `Good "git" signature` (SSH)
-   or `Good signature` (GPG). If signing fails, troubleshoot using the
+   or `Good signature` (GPG). For SSH you must configure
+   `gpg.ssh.allowedSignersFile` first, or this step errors out even
+   though the commit is properly signed — see step 4 of the
+   [Manual instructions](#manual-instructions). If signing fails, troubleshoot using the
    [Troubleshooting](#troubleshooting) section — do NOT recommend
    switching methods unless you've exhausted the troubleshooting list.
 8. **Confirm completion** by telling them their next PR will merge
@@ -363,11 +366,17 @@ cat ~/.ssh/id_ed25519.pub
 # Paste at GitHub > Settings > SSH and GPG keys > New SSH key
 # Key Type: Signing Key
 
-# 4. Verify
+# 4. Let git verify SSH signatures (required by step 5, including for
+#    your own commits — signing works without this, verifying does not)
+echo "you@example.com $(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" \
+  >> ~/.ssh/allowed_signers
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+
+# 5. Verify
 cd /tmp
 mkdir -p sigtest && cd sigtest && git init
 git commit --allow-empty -m "signing test"
-git log --show-signature -1   # expect "Good signature"
+git log --show-signature -1   # expect: Good "git" signature for you@example.com
 ```
 
 On Windows, replace `~/.ssh/id_ed25519.pub` with `$env:USERPROFILE\.ssh\id_ed25519.pub`
@@ -424,9 +433,20 @@ git config is per-user-per-environment in some Windows setups. Run
 the global config is being read.
 
 **"error: gpg.ssh.allowedSignersFile needs to be configured":**
-Only happens when you try to *verify* other people's signed commits
-locally. Not needed just to sign your own. Add the file later if you
-care: `git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers`.
+Signing does not need this file; *verifying* does — including verifying
+your own commits, which is what the setup's final step does. So a fresh
+SSH setup hits this error at `git log --show-signature` even though the
+commit is correctly signed. Create the file and point git at it:
+
+```sh
+echo "you@example.com $(cut -d' ' -f1,2 ~/.ssh/id_ed25519.pub)" \
+  >> ~/.ssh/allowed_signers
+git config --global gpg.ssh.allowedSignersFile ~/.ssh/allowed_signers
+```
+
+The email must match the one in `git config user.email`, and the key
+field is just the first two whitespace-separated fields of the pubkey
+(type + base64 blob) — not the trailing comment.
 
 **Old commits in my PR are unsigned but new ones are signed:**
 The squash-merge collapses everything anyway; GitHub will sign the
